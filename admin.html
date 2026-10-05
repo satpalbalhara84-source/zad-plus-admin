@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zad Plus Technology — Admin</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f5f7;color:#15171b}
+header{background:#0b0d10;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+.logo{font-size:20px;font-weight:800}.logo span{color:#e31b23}.wrap{max-width:1200px;margin:auto;padding:20px 16px}
+button{border:0;border-radius:7px;padding:10px 13px;font-weight:700;cursor:pointer}.red{background:#e31b23;color:#fff}.light{background:#fff;border:1px solid #ddd}
+.login{max-width:410px;margin:70px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 4px 20px #0001}
+input,textarea,select{width:100%;padding:10px;margin:5px 0 12px;border:1px solid #ddd;border-radius:7px}label{font-size:13px;font-weight:700}
+.hidden{display:none}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.active{background:#e31b23!important;color:#fff!important}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat,.panel,.card{background:#fff;border-radius:11px;padding:16px}.stat b{display:block;font-size:24px;margin-top:7px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}.toolbar input{max-width:300px;margin:0}
+table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #eee;text-align:left;font-size:13px;vertical-align:top}.badge{padding:5px 8px;border-radius:14px;background:#eee;font-size:11px;font-weight:800}
+.thumb{width:75px;height:75px;object-fit:contain;background:#f0f1f3;border-radius:8px}.preview{display:flex;align-items:center;gap:12px;margin:8px 0 14px}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}table{display:block;overflow:auto;white-space:nowrap}}
+</style></head>
+<body>
+<header><div class="logo">ZAD PLUS <span>TECHNOLOGY</span> — ADMIN</div><button id="logout" class="light hidden">Logout</button></header>
+<div id="login" class="login"><h2>Admin Login</h2><label>Email</label><input id="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Enter admin email" style="pointer-events:auto"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="Enter password" style="pointer-events:auto"><button class="red" style="width:100%" onclick="doLogin()">Login</button><p id="loginMsg"></p></div>
+
+<main id="app" class="wrap hidden">
+<div class="tabs">
+<button id="tDashboard" class="active" onclick="tab('dashboard')">Dashboard</button>
+<button id="tOrders" class="light" onclick="tab('orders')">Orders</button>
+<button id="tProducts" class="light" onclick="tab('products')">Products</button>
+<button id="tAdd" class="light" onclick="tab('add')">Add Product</button>
+</div>
+
+<section id="dashboard"><div class="stats">
+<div class="stat">Orders<b id="sOrders">0</b></div><div class="stat">New<b id="sNew">0</b></div><div class="stat">Products<b id="sProducts">0</b></div><div class="stat">Stock<b id="sStock">0</b></div>
+</div><div class="panel" style="margin-top:15px"><h2>Recent Orders</h2><div id="recent"></div></div></section>
+
+<section id="orders" class="hidden"><div class="panel"><h2>Orders</h2><div class="toolbar"><input id="orderSearch" placeholder="Search order/name/mobile" oninput="renderOrders()"><button class="light" onclick="loadAll()">Refresh</button></div><div style="overflow:auto"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody id="ordersBody"></tbody></table></div></div></section>
+
+<section id="products" class="hidden"><div class="panel"><h2>Products</h2><div id="productCards" class="grid"></div></div></section>
+
+<section id="add" class="hidden"><div class="panel"><h2 id="formTitle">Add Product</h2>
+<input type="hidden" id="editId">
+<label>Product Name</label><input id="pName" required>
+<label>SKU</label><input id="pSku">
+<label>Category</label><select id="pCategory"></select>
+<label>Brand</label><input id="pBrand" value="Zad Plus">
+<label>Price</label><input id="pPrice" type="number" min="0">
+<label>Sale Price</label><input id="pSale" type="number" min="0">
+<label>Stock</label><input id="pStock" type="number" min="0" value="0">
+<label>Warranty</label><input id="pWarranty">
+<label>Short Description</label><input id="pShort">
+<label>Description</label><textarea id="pDesc" rows="4"></textarea>
+<label>Product Image</label><input id="pImage" type="file" accept="image/*" onchange="previewFile()">
+<div class="preview"><img id="preview" class="thumb" alt=""><span id="uploadMsg"></span></div>
+<label><input id="pFeatured" type="checkbox" style="width:auto"> Featured product</label>
+<div style="display:flex;gap:8px;margin-top:12px"><button class="red" onclick="saveProduct()">Save Product</button><button class="light" onclick="resetForm()">Clear</button></div>
+</div></section>
+</main>
+
+<script>
+const SUPABASE_URL="https://etnlcmfywrezmzcvmgyh.supabase.co";
+const SUPABASE_KEY="sb_publishable_XIgHq_XORaC3lw0bJrsrnw_4p-18zec";
+const ADMIN_ID="41d82900-a9b6-4519-b427-9e649297516a";
+const BUCKET="product-images";
+let session=null,products=[],categories=[],orders=[],items=[];
+
+async function api(path,opts={}){const r=await fetch(SUPABASE_URL+"/rest/v1/"+path,{...opts,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+(session?.access_token||SUPABASE_KEY),"Content-Type":"application/json",...(opts.headers||{})}});if(!r.ok)throw new Error(await r.text());return r.status===204?null:r.json()}
+async function auth(body){const r=await fetch(SUPABASE_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error_description||"Login failed");return d}
+async function doLogin(){try{const loginEmail=document.getElementById("email").value.trim();const loginPassword=document.getElementById("password").value;if(!loginEmail||!loginPassword){loginMsg.textContent="Email और Password दोनों भरें.";loginMsg.style.color="#c00";return;}session=await auth({email:loginEmail,password:loginPassword});if(session.user.id!==ADMIN_ID)throw Error("This account is not authorized.");login.classList.add("hidden");app.classList.remove("hidden");logout.classList.remove("hidden");await loadAll()}catch(e){document.getElementById("loginMsg").textContent=e.message;document.getElementById("loginMsg").style.color="#c00"}}
+logout.onclick=()=>location.reload();
+
+async function loadAll(){try{[categories,products,orders]=await Promise.all([api("categories?select=*&is_active=eq.true&order=name"),api("products?select=*&order=created_at.desc"),api("orders?select=*&order=created_at.desc")]);items=orders.length?await api("order_items?select=*&order=created_at.desc"):[];renderStats();renderRecent();renderOrders();renderProducts();fillCats()}catch(e){alert(e.message)}}
+function renderStats(){sOrders.textContent=orders.length;sNew.textContent=orders.filter(o=>o.order_status==="new").length;sProducts.textContent=products.length;sStock.textContent=products.reduce((a,p)=>a+Number(p.stock||0),0)}
+function renderRecent(){recent.innerHTML=orders.slice(0,5).map(o=>`<div class="card" style="margin:7px 0"><b>${esc(o.customer_name)}</b> · ₹${num(o.total_amount)} · <span class="badge">${esc(o.order_status)}</span><br>${esc(o.customer_phone)}<br><button class="light" onclick="wa('${o.id}')">WhatsApp</button></div>`).join("")||"No orders yet."}
+function renderOrders(){let q=(orderSearch?.value||"").toLowerCase();let list=orders.filter(o=>[o.id,o.customer_name,o.customer_phone,o.order_status].join(" ").toLowerCase().includes(q));ordersBody.innerHTML=list.map(o=>{let its=items.filter(i=>i.order_id===o.id);return `<tr><td>${o.id.slice(0,8)}<br>${new Date(o.created_at).toLocaleString("en-IN")}</td><td>${esc(o.customer_name)}<br>${esc(o.customer_phone)}<br>${esc(o.shipping_address||"")}, ${esc(o.city||"")} - ${esc(o.pincode||"")}</td><td>${its.map(i=>esc(i.product_name)+" × "+i.quantity).join("<br>")||"—"}</td><td>₹${num(o.total_amount)}<br>COD</td><td><select onchange="setStatus('${o.id}',this.value)">${["new","confirmed","packed","shipped","delivered","cancelled"].map(s=>`<option ${o.order_status===s?"selected":""}>${s}</option>`).join("")}</select></td><td><button class="light" onclick="wa('${o.id}')">WhatsApp</button></td></tr>`}).join("")||"<tr><td colspan=6>No orders found.</td></tr>"}
+async function setStatus(id,status){try{await api("orders?id=eq."+id,{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({order_status:status,updated_at:new Date().toISOString()})});await loadAll()}catch(e){alert(e.message)}}
+function wa(id){let o=orders.find(x=>x.id===id),its=items.filter(i=>i.order_id===id);if(!o)return;let msg=`Zad Plus Technology Order%0AOrder: ${o.id}%0AName: ${encodeURIComponent(o.customer_name)}%0AMobile: ${encodeURIComponent(o.customer_phone)}%0AStatus: ${o.order_status}%0ATotal: ₹${o.total_amount}%0AItems: ${encodeURIComponent(its.map(i=>i.product_name+" x "+i.quantity).join(", "))}`;window.open("https://wa.me/"+o.customer_phone.replace(/\D/g,"")+"?text="+msg,"_blank")}
+function renderProducts(){productCards.innerHTML=products.map(p=>`<div class="card"><div class="preview">${p.image_url?`<img class="thumb" src="${esc(p.image_url)}">`:""}<div><b>${esc(p.name)}</b><br>₹${num(p.sale_price??p.price)} · Stock: ${p.stock}</div></div><div style="display:flex;gap:7px"><button class="red" onclick="editProduct('${p.id}')">Edit</button><button class="light" onclick="updateStock('${p.id}')">Stock</button></div></div>`).join("")||"No products."}
+async function updateStock(id){let p=products.find(x=>x.id===id),v=prompt("New stock",p.stock);if(v===null)return;try{await api("products?id=eq."+id,{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({stock:Number(v),updated_at:new Date().toISOString()})});await loadAll()}catch(e){alert(e.message)}}
+function fillCats(){pCategory.innerHTML=categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}
+function slug(s){return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")+"-"+Date.now().toString().slice(-6)}
+function previewFile(){let f=pImage.files[0];if(!f)return;preview.src=URL.createObjectURL(f);uploadMsg.textContent=f.name}
+async function uploadImage(file,productId){if(!file)return null;let ext=(file.name.split(".").pop()||"jpg").toLowerCase(),path=productId+"-"+Date.now()+"."+ext;let r=await fetch(SUPABASE_URL+"/storage/v1/object/"+BUCKET+"/"+path,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+session.access_token,"Content-Type":file.type||"image/jpeg","x-upsert":"true"},body:file});if(!r.ok)throw Error(await r.text());return SUPABASE_URL+"/storage/v1/object/public/"+BUCKET+"/"+path}
+async function saveProduct(){try{let id=editId.value||crypto.randomUUID(),data={name:pName.value,slug:slug(pName.value),sku:pSku.value||null,category_id:pCategory.value||null,brand:pBrand.value||null,price:Number(pPrice.value||0),sale_price:pSale.value?Number(pSale.value):null,stock:Number(pStock.value||0),warranty:pWarranty.value||null,short_description:pShort.value||null,description:pDesc.value||null,is_featured:pFeatured.checked,is_active:true,updated_at:new Date().toISOString()};let f=pImage.files[0];if(f){uploadMsg.textContent="Uploading...";data.image_url=await uploadImage(f,id)}if(editId.value){delete data.slug;await api("products?id=eq."+id,{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify(data)})}else{data.id=id;await api("products",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(data)})}alert("Product saved successfully");resetForm();await loadAll();tab("products")}catch(e){alert("Save failed: "+e.message)}}
+function editProduct(id){let p=products.find(x=>x.id===id);if(!p)return;editId.value=p.id;pName.value=p.name;pSku.value=p.sku||"";pCategory.value=p.category_id||"";pBrand.value=p.brand||"";pPrice.value=p.price;pSale.value=p.sale_price??"";pStock.value=p.stock;pWarranty.value=p.warranty||"";pShort.value=p.short_description||"";pDesc.value=p.description||"";pFeatured.checked=!!p.is_featured;preview.src=p.image_url||"";formTitle.textContent="Edit Product";tab("add")}
+function resetForm(){editId.value="";pName.value="";pSku.value="";pBrand.value="Zad Plus";pPrice.value="";pSale.value="";pStock.value=0;pWarranty.value="";pShort.value="";pDesc.value="";pFeatured.checked=false;pImage.value="";preview.src="";uploadMsg.textContent="";formTitle.textContent="Add Product"}
+function tab(n){["dashboard","orders","products","add"].forEach(x=>document.getElementById(x).classList.toggle("hidden",x!==n));document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("active"));document.getElementById("t"+n[0].toUpperCase()+n.slice(1)).classList.add("active")}
+function num(x){return Number(x||0).toLocaleString("en-IN")}function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+</script></body></html>
